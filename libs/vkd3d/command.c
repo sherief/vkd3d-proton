@@ -8173,6 +8173,10 @@ static void STDMETHODCALLTYPE d3d12_command_list_OMSetRenderTargets(d3d12_comman
             rtv_desc = d3d12_rtv_desc_from_cpu_handle(render_target_descriptors[i]);
         }
 
+        VKD3D_BREADCRUMB_COOKIE(rtv_desc && rtv_desc->resource ? rtv_desc->resource->res.cookie : 0);
+        VKD3D_BREADCRUMB_AUX32(i);
+        VKD3D_BREADCRUMB_COMMAND_STATE(BIND_RTV);
+
         if (!rtv_desc || !rtv_desc->resource)
         {
             WARN("RTV descriptor %u is not initialized.\n", i);
@@ -8204,6 +8208,9 @@ static void STDMETHODCALLTYPE d3d12_command_list_OMSetRenderTargets(d3d12_comman
         {
             WARN("DSV descriptor is not initialized.\n");
         }
+
+        VKD3D_BREADCRUMB_COOKIE(rtv_desc && rtv_desc->resource ? rtv_desc->resource->res.cookie : 0);
+        VKD3D_BREADCRUMB_COMMAND_STATE(BIND_DSV);
     }
 
     if (d3d12_pipeline_state_is_graphics(list->state))
@@ -8301,6 +8308,9 @@ static void STDMETHODCALLTYPE d3d12_command_list_ClearDepthStencilView(d3d12_com
 
     d3d12_command_list_clear_attachment(list, dsv_desc->resource, dsv_desc->view,
             clear_aspects, &clear_value, rect_count, rects);
+
+    VKD3D_BREADCRUMB_COOKIE(dsv_desc->resource->res.cookie);
+    VKD3D_BREADCRUMB_COMMAND(CLEAR_DSV);
 }
 
 static void STDMETHODCALLTYPE d3d12_command_list_ClearRenderTargetView(d3d12_command_list_iface *iface,
@@ -8339,6 +8349,9 @@ static void STDMETHODCALLTYPE d3d12_command_list_ClearRenderTargetView(d3d12_com
 
     d3d12_command_list_clear_attachment(list, rtv_desc->resource, rtv_desc->view,
             VK_IMAGE_ASPECT_COLOR_BIT, &clear_value, rect_count, rects);
+
+    VKD3D_BREADCRUMB_COOKIE(rtv_desc->resource->res.cookie);
+    VKD3D_BREADCRUMB_COMMAND(CLEAR_RTV);
 }
 
 struct vkd3d_clear_uav_info
@@ -8931,6 +8944,7 @@ static void STDMETHODCALLTYPE d3d12_command_list_ClearUnorderedAccessViewUint(d3
                 {
                     d3d12_command_list_clear_uav_with_copy(list, &d, resource_impl,
                             &args, &color, uint_format, rect_count, rects);
+                    VKD3D_BREADCRUMB_COMMAND(CLEAR_UAV_FALLBACK);
                     return;
                 }
             }
@@ -8968,6 +8982,8 @@ static void STDMETHODCALLTYPE d3d12_command_list_ClearUnorderedAccessViewUint(d3
         d3d12_command_allocator_add_view(list->allocator, inline_view);
         vkd3d_view_decref(inline_view, list->device);
     }
+
+    VKD3D_BREADCRUMB_COMMAND(CLEAR_UAV_UINT);
 }
 
 static void STDMETHODCALLTYPE d3d12_command_list_ClearUnorderedAccessViewFloat(d3d12_command_list_iface *iface,
@@ -8994,6 +9010,7 @@ static void STDMETHODCALLTYPE d3d12_command_list_ClearUnorderedAccessViewFloat(d
         color = vkd3d_fixup_clear_uav_swizzle(list->device, d.view->info.view->format->dxgi_format, color);
 
     d3d12_command_list_clear_uav(list, &d, resource_impl, &args, &color, rect_count, rects);
+    VKD3D_BREADCRUMB_COMMAND(CLEAR_UAV_FLOAT);
 }
 
 static void STDMETHODCALLTYPE d3d12_command_list_DiscardResource(d3d12_command_list_iface *iface,
@@ -9878,6 +9895,11 @@ static void STDMETHODCALLTYPE d3d12_command_list_ExecuteIndirect(d3d12_command_l
 
     if (!max_command_count)
         return;
+
+    VKD3D_BREADCRUMB_COOKIE(arg_impl ? arg_impl->res.cookie : 0);
+    VKD3D_BREADCRUMB_AUX64(arg_buffer_offset);
+    VKD3D_BREADCRUMB_COOKIE(count_impl ? count_impl->res.cookie : 0);
+    VKD3D_BREADCRUMB_AUX64(count_buffer_offset);
 
     if ((count_buffer || list->predicate_va) && !list->device->vk_info.KHR_draw_indirect_count)
     {
